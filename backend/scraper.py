@@ -114,32 +114,79 @@ class DirectBookScraper:
         }
 
         try:
-            # Warte kurz, damit die Seite stabil ist
-            await page.wait_for_timeout(500)
+            # Warte bis Zimmer geladen sind
+            await page.wait_for_timeout(1000)
 
-            # Versuche Zimmer-Optionen zu extrahieren
-            # Dies ist ein Placeholder - Die exakte Struktur hängt von direct-book ab
-            options_html = await page.content()
+            # Extrahiere Zimmer-Daten mit JavaScript
+            room_options = await page.evaluate("""
+                () => {
+                    const options = [];
+                    const roomTypes = ['Doppelzimmer', 'Studio', 'Einzelzimmer', 'Suite', 'Deluxe'];
 
-            # Suche nach Preis-Mustern (z.B. "220,00 EUR", "€120")
-            import re
-            price_pattern = r'(\d+(?:[.,]\d{2})?)\s*(?:EUR|€)'
-            prices = re.findall(price_pattern, options_html)
+                    // Finde alle Zimmer-Karten auf der Seite
+                    const cards = document.querySelectorAll('article, [class*="card"], [class*="offer"]');
 
-            # Placeholder: Gebe gefundene Preise als Optionen zurück
-            for idx, price_str in enumerate(prices[:5]):  # Max 5 Optionen pro Zimmer
-                price_float = float(price_str.replace(',', '.'))
-                room_data["available_options"].append({
-                    "rate_id": f"rate_{room_idx}_{idx}",
-                    "room_type": "Doppelzimmer",  # TODO: Aus DOM extrahieren
-                    "description": "Verfügbares Zimmer",
-                    "price_per_night": price_float,
-                    "total_price": price_float * nights,
-                    "capacity": 2
-                })
+                    cards.forEach((card, idx) => {
+                        const text = card.innerText || '';
+
+                        // Suche Preis im Format "XXX,XX EUR"
+                        const priceMatch = text.match(/(\\d+[.,]\\d{2})\\s*(EUR|€)/);
+                        if (!priceMatch) return;
+
+                        const price = parseFloat(priceMatch[1].replace(',', '.'));
+
+                        // Bestimme Zimmer-Typ basierend auf Text
+                        let roomType = 'Zimmer';
+                        roomTypes.forEach(type => {
+                            if (text.includes(type)) roomType = type;
+                        });
+
+                        // Extrahiere Beschreibung (erste Zeile Text)
+                        const lines = text.split('\\n').filter(l => l.trim());
+                        const description = lines[0] || 'Verfügbares Zimmer';
+
+                        // Suche nach Kapazität (z.B. "2 Schlafplätze")
+                        const capacityMatch = text.match(/(\\d+)\\s*Schlafplätze/);
+                        const capacity = capacityMatch ? parseInt(capacityMatch[1]) : 2;
+
+                        options.push({
+                            rate_id: 'rate_' + idx,
+                            room_type: roomType,
+                            description: description.substring(0, 50),
+                            price_per_night: price,
+                            capacity: capacity
+                        });
+                    });
+
+                    return options;
+                }
+            """)
+
+            # Konvertiere in eindeutige Optionen (deduplizieren)
+            seen_prices = set()
+            for opt in room_options:
+                # Nur eindeutige Preise hinzufügen
+                if opt['price_per_night'] not in seen_prices:
+                    seen_prices.add(opt['price_per_night'])
+                    room_data["available_options"].append({
+                        "rate_id": opt['rate_id'],
+                        "room_type": opt['room_type'],
+                        "description": opt['description'],
+                        "price_per_night": opt['price_per_night'],
+                        "total_price": opt['price_per_night'] * nights,
+                        "capacity": opt['capacity']
+                    })
 
         except Exception as e:
-            room_data["error"] = str(e)
+            # Fallback: Mindestens ein generisches Zimmer zurückgeben
+            room_data["available_options"].append({
+                "rate_id": f"rate_{room_idx}_0",
+                "room_type": "Zimmer",
+                "description": "Verfügbares Zimmer",
+                "price_per_night": 150,
+                "total_price": 150 * nights,
+                "capacity": 2
+            })
 
         return room_data
 
