@@ -1,6 +1,6 @@
 // Villa Flora Booking Bot Frontend
 
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = "https://villa-flora-bot.onrender.com/api";
 
 // DOM Elements
 const searchForm = document.getElementById("searchForm");
