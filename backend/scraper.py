@@ -66,11 +66,14 @@ class DirectBookScraper:
                 await page.goto(url, wait_until="networkidle")
                 await page.wait_for_load_state("domcontentloaded")
 
-                # Warte bis Zimmer geladen sind
+                # Warte länger bis Zimmer mit Preisen geladen sind
+                await page.wait_for_timeout(2000)  # 2 Sekunden für GraphQL-Daten
+
+                # Versuche auf Zimmer-Elemente zu warten
                 try:
-                    await page.wait_for_selector('[class*="rate"]', timeout=5000)
+                    await page.wait_for_selector('article, [class*="card"], [class*="offer"]', timeout=8000)
                 except:
-                    pass  # Fallback, wenn Selector nicht gefunden
+                    pass  # Fallback
 
                 # Extrahiere Zimmer-Daten für jedes Zimmer (sequenziell)
                 result = {

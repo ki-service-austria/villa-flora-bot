@@ -45,7 +45,7 @@ main {
 
 /* Chat Section */
 .chat-section {
-    display: flex;
+    display: none;  /* Verstecke Chat - nicht nötig für Demo */
     flex-direction: column;
     gap: 20px;
 }
