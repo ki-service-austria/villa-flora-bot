@@ -1,21 +1,9 @@
 """
 Intelligente Zimmer-Matching-Logik
-Findet beste Kombinationen basierend auf Kundenwünsche und Verfügbarkeit
+Findet beste Kombinationen basierend auf Kundenwünsche und echter Verfügbarkeit
 """
 from typing import List, Dict, Any
-from dataclasses import dataclass
-
-
-@dataclass
-class RoomMatch:
-    """Einzelner Zimmer-Vorschlag"""
-    rate_id: str
-    room_type: str
-    description: str
-    price_per_night: float
-    total_price: float
-    capacity: int
-    confidence: float  # 0-1: Wie gut passt es zum Wunsch
+from urllib.parse import urlencode
 
 
 class RoomMatcher:
@@ -27,187 +15,126 @@ class RoomMatcher:
         request: Dict[str, Any],
         availability: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """
-        Matched Kundenwunsch mit verfügbaren Zimmern.
+        """Matched Kundenwunsch mit echten verfügbaren Zimmern"""
 
-        Args:
-            request: {
-                "adults": 4,
-                "children": 2,
-                "infants": 0,
-                "preferred_room_type": "doppelzimmer",  # optional
-                "balcony": True,  # optional
-                "checkin": "2026-05-10",
-                "checkout": "2026-05-12"
-            }
-            availability: Output von scraper.get_availability()
-
-        Returns: {
-            "request": {...},
-            "total_persons": 6,
-            "has_children": True,
-            "nights": 2,
-            "suggestions": [
-                {
-                    "rank": 1,
-                    "title": "1x Studio + 1x Doppelzimmer",
-                    "reason": "Beste Kombination für Familie mit Kindern",
-                    "rooms": [...],
-                    "total_price": 440,
-                    "booking_link": "..."
-                },
-                ...
-            ]
-        }
-        """
-
-        # Analysiere Anfrage
         total_persons = request.get("adults", 0) + request.get("children", 0) + request.get("infants", 0)
         has_children = request.get("children", 0) > 0
+        nights = availability.get("nights", 1)
 
         result = {
             "request": request,
             "total_persons": total_persons,
             "has_children": has_children,
-            "nights": availability.get("nights", 0),
+            "nights": nights,
             "suggestions": []
         }
 
-        # Bestimme Strategie basierend auf Familie/keine Familie
+        # Sammle alle verfügbaren Zimmer-Optionen aus dem Scraper
+        all_options = []
+        for room in availability.get("rooms", []):
+            for opt in room.get("available_options", []):
+                all_options.append(opt)
+
+        # Wenn keine echten Daten, gib leere Vorschläge zurück
+        if not all_options:
+            result["suggestions"] = [{
+                "rank": 1,
+                "title": "Keine Verfügbarkeit gefunden",
+                "reason": "Bitte direkt auf der Webseite prüfen",
+                "room_count": 0,
+                "rooms": [],
+                "total_price": 0,
+                "confidence": 0.0,
+                "booking_link": self._build_search_link(request)
+            }]
+            return result
+
+        # Sortiere nach Preis aufsteigend
+        all_options.sort(key=lambda x: x.get("price_per_night", 0))
+
+        suggestions = []
+
+        # Vorschlag 1: Günstigstes verfügbares Zimmer
+        cheapest = all_options[0]
+        suggestions.append({
+            "rank": 1,
+            "title": f"1x {cheapest['room_type']}",
+            "reason": "Günstigste verfügbare Option",
+            "room_count": 1,
+            "rooms": [cheapest],
+            "total_price": cheapest["price_per_night"] * nights,
+            "price_per_night": cheapest["price_per_night"],
+            "confidence": 0.90,
+            "booking_link": self._build_search_link(request)
+        })
+
+        # Vorschlag 2: Mittelpreisig (wenn verfügbar)
+        if len(all_options) > 1:
+            middle_idx = len(all_options) // 2
+            middle = all_options[middle_idx]
+            if middle["price_per_night"] != cheapest["price_per_night"]:
+                suggestions.append({
+                    "rank": 2,
+                    "title": f"1x {middle['room_type']}",
+                    "reason": "Komfortable Mittelklasse-Option",
+                    "room_count": 1,
+                    "rooms": [middle],
+                    "total_price": middle["price_per_night"] * nights,
+                    "price_per_night": middle["price_per_night"],
+                    "confidence": 0.85,
+                    "booking_link": self._build_search_link(request)
+                })
+
+        # Vorschlag 3: Premium-Option (teuerstes)
+        if len(all_options) > 2:
+            premium = all_options[-1]
+            if premium["price_per_night"] != cheapest["price_per_night"]:
+                suggestions.append({
+                    "rank": 3,
+                    "title": f"1x {premium['room_type']} (Premium)",
+                    "reason": "Beste Ausstattung",
+                    "room_count": 1,
+                    "rooms": [premium],
+                    "total_price": premium["price_per_night"] * nights,
+                    "price_per_night": premium["price_per_night"],
+                    "confidence": 0.75,
+                    "booking_link": self._build_search_link(request)
+                })
+
+        # Familien-Spezial: Wenn mit Kindern, sortiere Studios nach oben
         if has_children:
-            suggestions = self._match_family_request(request, availability)
-        else:
-            suggestions = self._match_adults_only_request(request, availability)
+            studio_options = [o for o in all_options if "Studio" in o.get("room_type", "")]
+            if studio_options:
+                studio = studio_options[0]
+                suggestions.insert(0, {
+                    "rank": 0,
+                    "title": f"1x {studio['room_type']}",
+                    "reason": "Empfohlen für Familien mit Kindern - mehr Platz",
+                    "room_count": 1,
+                    "rooms": [studio],
+                    "total_price": studio["price_per_night"] * nights,
+                    "price_per_night": studio["price_per_night"],
+                    "confidence": 0.95,
+                    "booking_link": self._build_search_link(request)
+                })
 
-        # Sortiere nach Qualität (confidence)
-        suggestions.sort(key=lambda x: x["confidence"], reverse=True)
+        # Re-rank
+        for idx, sug in enumerate(suggestions[:3]):
+            sug["rank"] = idx + 1
 
-        result["suggestions"] = suggestions[:3]  # Top 3 Vorschläge
-
+        result["suggestions"] = suggestions[:3]
         return result
 
-    def _match_family_request(
-        self,
-        request: Dict[str, Any],
-        availability: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        """Matching für Familien mit Kindern"""
-
-        suggestions = []
-        total_persons = request.get("adults", 0) + request.get("children", 0)
-
-        # Strategie 1: Studio (4 Plätze, viel Raum für Familie)
-        if total_persons <= 4:
-            studio_match = {
-                "rank": 1,
-                "title": "1x Studio",
-                "reason": "Perfekt für Familien - 4 Plätze, viel Raum",
-                "room_count": 1,
-                "rooms": [],
-                "total_price": 0,
-                "confidence": 0.95 if request.get("balcony") else 0.85,
-                "booking_link": ""
-            }
-            suggestions.append(studio_match)
-
-        # Strategie 2: Doppelzimmer + Einzelzimmer
-        if total_persons == 3:  # 2 Erw + 1 Kind
-            combo_match = {
-                "rank": 2,
-                "title": "1x Doppelzimmer + 1x Einzelzimmer",
-                "reason": "Familie hat separate Räume",
-                "room_count": 2,
-                "rooms": [],
-                "total_price": 0,
-                "confidence": 0.80,
-                "booking_link": ""
-            }
-            suggestions.append(combo_match)
-
-        elif total_persons == 4 and request.get("adults", 0) == 2:  # 2 Erw + 2 Kinder
-            combo_match = {
-                "rank": 2,
-                "title": "1x Doppelzimmer + 2x Einzelzimmer",
-                "reason": "Alle Personen komfortabel untergebracht",
-                "room_count": 3,
-                "rooms": [],
-                "total_price": 0,
-                "confidence": 0.75,
-                "booking_link": ""
-            }
-            suggestions.append(combo_match)
-
-        return suggestions
-
-    def _match_adults_only_request(
-        self,
-        request: Dict[str, Any],
-        availability: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        """Matching für nur Erwachsene"""
-
-        suggestions = []
-        adults = request.get("adults", 0)
-
-        if adults == 1:
-            suggestions.append({
-                "rank": 1,
-                "title": "1x Einzelzimmer",
-                "reason": "Perfekt für einzelne Gäste",
-                "room_count": 1,
-                "rooms": [],
-                "total_price": 0,
-                "confidence": 0.95,
-                "booking_link": ""
-            })
-
-        elif adults == 2:
-            suggestions.append({
-                "rank": 1,
-                "title": "1x Doppelzimmer",
-                "reason": "Standard für 2 Personen",
-                "room_count": 1,
-                "rooms": [],
-                "total_price": 0,
-                "confidence": 0.95,
-                "booking_link": ""
-            })
-
-        elif adults == 4:
-            suggestions.append({
-                "rank": 1,
-                "title": "2x Doppelzimmer",
-                "reason": "Zwei getrennte Zimmer für 4 Personen",
-                "room_count": 2,
-                "rooms": [],
-                "total_price": 0,
-                "confidence": 0.90,
-                "booking_link": ""
-            })
-
-            suggestions.append({
-                "rank": 2,
-                "title": "1x Studio",
-                "reason": "Alternative: Alle in einem großen Zimmer",
-                "room_count": 1,
-                "rooms": [],
-                "total_price": 0,
-                "confidence": 0.70,
-                "booking_link": ""
-            })
-
-        return suggestions
-
-    def generate_booking_link(
-        self,
-        suggestion: Dict[str, Any],
-        availability: Dict[str, Any],
-        base_url: str = "https://direct-book.com"
-    ) -> str:
-        """Generiert Buchungslink für einen Vorschlag"""
-
-        # TODO: Zimmer + Raten aus suggestion auswählen und Link bauen
-        # Format: /properties/HotelVillaFlora/book?items[0][rateId]=XXX&...
-
-        link = f"{base_url}/properties/HotelVillaFlora"
-        return link
+    def _build_search_link(self, request: Dict[str, Any]) -> str:
+        """Generiert direct-book.com Such-Link"""
+        params = {
+            "locale": "de",
+            "checkInDate": request.get("checkin", ""),
+            "checkOutDate": request.get("checkout", ""),
+            "currency": "EUR",
+            "items[0][adults]": request.get("adults", 2),
+            "items[0][children]": request.get("children", 0),
+            "items[0][infants]": request.get("infants", 0),
+        }
+        query_string = urlencode(params)
+        return f"https://direct-book.com/properties/HotelVillaFlora?{query_string}"
