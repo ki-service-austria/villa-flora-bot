@@ -1,0 +1,44 @@
+hotel:
+  name: "Hotel Villa Flora"
+  property_id: "HotelVillaFlora"
+  booking_platform: "https://direct-book.com"
+
+room_types:
+  studio:
+    name: "Studio"
+    capacity: 4
+    has_balcony: true
+    description: "Modernes Studio mit Balkon"
+
+  einzelzimmer:
+    name: "Einzelzimmer"
+    capacity: 1
+    has_balcony: false
+    description: "Komfortables Einzelzimmer"
+
+  doppelzimmer:
+    name: "Doppelzimmer"
+    capacity: 2
+    has_balcony: false
+    description: "Klassisches Doppelzimmer"
+
+  doppelzimmer_deluxe:
+    name: "Doppelzimmer Deluxe"
+    capacity: 2
+    has_balcony: false
+    description: "Luxuriöses Doppelzimmer mit Balkon"
+
+matching:
+  # Mit Kindern → bevorzugt großzügige Lösungen
+  with_children_preference:
+    - "studio"      # 1. Studio (4 Plätze, viel Raum)
+    - "doppelzimmer_deluxe"
+    - "doppelzimmer"
+    - "einzelzimmer"
+
+  # Nur Erwachsene → kann minimal sein
+  adults_only_preference:
+    - "einzelzimmer"
+    - "doppelzimmer"
+    - "doppelzimmer_deluxe"
+    - "studio"

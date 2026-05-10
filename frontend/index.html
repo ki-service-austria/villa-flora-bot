@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Villa Flora - Buchungsanfrage Bot</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏨 Villa Flora</h1>
+            <p>Intelligente Zimmersuche</p>
+        </header>
+
+        <main>
+            <section class="chat-section">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message bot">
+                        <div class="message-content">
+                            Hallo! 👋 Willkommen bei Villa Flora. <br>
+                            Ich helfe dir, das perfekte Zimmer zu finden. <br>
+                            <br>
+                            Sag mir einfach, wann du anreisen möchtest und wie viele Personen kommen.
+                        </div>
+                    </div>
+                </div>
+
+                <form class="search-form" id="searchForm">
+                    <div class="form-group">
+                        <label>Check-in Datum</label>
+                        <input type="date" id="checkin" name="checkin" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Check-out Datum</label>
+                        <input type="date" id="checkout" name="checkout" required>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>👨 Erwachsene</label>
+                            <input type="number" id="adults" name="adults" min="0" value="1" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label>👧 Kinder</label>
+                            <input type="number" id="children" name="children" min="0" value="0">
+                        </div>
+
+                        <div class="form-group">
+                            <label>👶 Kleinkinder</label>
+                            <input type="number" id="infants" name="infants" min="0" value="0">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>🛏️ Zimmertyp (optional)</label>
+                        <select id="roomType" name="preferred_room_type">
+                            <option value="">Egal</option>
+                            <option value="studio">Studio</option>
+                            <option value="einzelzimmer">Einzelzimmer</option>
+                            <option value="doppelzimmer">Doppelzimmer</option>
+                            <option value="doppelzimmer_deluxe">Doppelzimmer Deluxe</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group checkbox">
+                        <input type="checkbox" id="balcony" name="balcony">
+                        <label for="balcony">🏖️ Mit Balkon</label>
+                    </div>
+
+                    <button type="submit" class="btn-primary">Verfügbarkeit prüfen</button>
+                </form>
+            </section>
+
+            <section class="results-section" id="resultsSection" style="display: none;">
+                <h2>Verfügbare Optionen</h2>
+                <div class="results-container" id="resultsContainer">
+                    <!-- Dynamisch gefüllt -->
+                </div>
+                <button class="btn-secondary" onclick="resetForm()">Neue Suche</button>
+            </section>
+
+            <section class="loading-section" id="loadingSection" style="display: none;">
+                <div class="spinner"></div>
+                <p>Suche verfügbare Zimmer...</p>
+            </section>
+
+            <section class="error-section" id="errorSection" style="display: none;">
+                <div class="error-message" id="errorMessage"></div>
+                <button class="btn-secondary" onclick="resetForm()">Zurück</button>
+            </section>
+        </main>
+
+        <footer>
+            <p>Hotel Villa Flora • Markus-Pernhart-Straße 5-7 • 9220 Velden am Wörthersee</p>
+            <p>📞 +43 4274 2130 • 📧 hotel@villa-flora.at</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
